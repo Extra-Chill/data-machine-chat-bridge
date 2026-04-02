@@ -3,7 +3,7 @@
  * Plugin Name: Data Machine Chat Bridge
  * Plugin URI: https://github.com/Extra-Chill/data-machine-chat-bridge
  * Description: External chat bridge connections for Data Machine. Message queue, webhook delivery, and REST API for any chat client integration.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.9
  * Requires PHP: 8.2
  * Requires Plugins: data-machine
@@ -18,7 +18,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'DATAMACHINE_CHAT_BRIDGE_VERSION', '0.1.0' );
+define( 'DATAMACHINE_CHAT_BRIDGE_VERSION', '0.1.1' );
 define( 'DATAMACHINE_CHAT_BRIDGE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'DATAMACHINE_CHAT_BRIDGE_URL', plugin_dir_url( __FILE__ ) );
 
@@ -56,6 +56,9 @@ function datamachine_chat_bridge_bootstrap() {
 
 	// Register daily cleanup cron.
 	\DataMachineChatBridge\Cron\Cleanup::register();
+
+	// Run schema upgrades when plugin version changes.
+	datamachine_chat_bridge_maybe_upgrade();
 }
 add_action( 'plugins_loaded', 'datamachine_chat_bridge_bootstrap', 20 );
 
@@ -64,6 +67,7 @@ add_action( 'plugins_loaded', 'datamachine_chat_bridge_bootstrap', 20 );
  */
 function datamachine_chat_bridge_activate() {
 	\DataMachineChatBridge\Database\Schema::create_tables();
+	update_option( 'datamachine_chat_bridge_version', DATAMACHINE_CHAT_BRIDGE_VERSION, false );
 }
 register_activation_hook( __FILE__, 'datamachine_chat_bridge_activate' );
 
@@ -74,3 +78,19 @@ function datamachine_chat_bridge_deactivate() {
 	\DataMachineChatBridge\Cron\Cleanup::unschedule();
 }
 register_deactivation_hook( __FILE__, 'datamachine_chat_bridge_deactivate' );
+
+/**
+ * Run schema upgrades on plugin version changes.
+ *
+ * @return void
+ */
+function datamachine_chat_bridge_maybe_upgrade() {
+	$installed_version = get_option( 'datamachine_chat_bridge_version', '' );
+
+	if ( DATAMACHINE_CHAT_BRIDGE_VERSION === $installed_version ) {
+		return;
+	}
+
+	\DataMachineChatBridge\Database\Schema::create_tables();
+	update_option( 'datamachine_chat_bridge_version', DATAMACHINE_CHAT_BRIDGE_VERSION, false );
+}
