@@ -124,10 +124,13 @@ class BridgeEndpoints {
 	 * Handle POST /register — register or update a bridge connection.
 	 */
 	public static function handle_register( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
-		$agent_id      = PermissionHelper::get_acting_agent_id();
-		$callback_url  = $request->get_param( 'callback_url' );
-		$bridge_id     = $request->get_param( 'bridge_id' ) ?? '';
-		$token_caps    = PermissionHelper::get_agent_token_capabilities();
+		$agent_id     = PermissionHelper::get_acting_agent_id();
+		$callback_url = $request->get_param( 'callback_url' );
+		$bridge_id    = $request->get_param( 'bridge_id' ) ?? '';
+
+		if ( ! $agent_id ) {
+			return new WP_Error( 'no_agent', 'No agent context found.', array( 'status' => 400 ) );
+		}
 
 		$connections = new BridgeConnections();
 		$result      = $connections->register_bridge( $agent_id, $callback_url, $bridge_id );
