@@ -93,6 +93,10 @@ class BridgeEndpoints {
 						'default'           => 50,
 						'sanitize_callback' => 'absint',
 					),
+					'session_ids' => array(
+						'required'          => false,
+						'description'       => 'Optional array or comma-separated list of session IDs to scope polling.',
+					),
 				),
 			)
 		);
@@ -105,16 +109,7 @@ class BridgeEndpoints {
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( self::class, 'handle_ack' ),
 				'permission_callback' => $token_auth,
-				'args'                => array(
-					'message_ids' => array(
-						'type'              => 'array',
-						'required'          => true,
-						'description'       => 'Array of message queue IDs to acknowledge.',
-						'validate_callback' => function ( $param ) {
-							return is_array( $param ) && ! empty( $param );
-						},
-					),
-				),
+				'args'                => array(),
 			)
 		);
 
@@ -190,6 +185,8 @@ class BridgeEndpoints {
 			'success'         => true,
 			'registration_id' => $result,
 			'agent_id'        => $agent_id,
+			'bridge_id'       => $bridge_id,
+			'callback_url'    => $callback_url,
 			'poll_endpoint'   => rest_url( 'chat-bridge/v1/pending' ),
 		) );
 	}
@@ -198,11 +195,12 @@ class BridgeEndpoints {
 	 * Handle GET /pending — return undelivered messages for this agent.
 	 */
 	public static function handle_pending( WP_REST_Request $request ): \WP_REST_Response {
-		$agent_id = PermissionHelper::get_acting_agent_id();
-		$limit    = $request->get_param( 'limit' ) ?: 50;
+		$agent_id    = PermissionHelper::get_acting_agent_id();
+		$limit       = $request->get_param( 'limit' ) ?: 50;
+		$session_ids = self::normalize_string_list( $request->get_param( 'session_ids' ) );
 
 		$connections = new BridgeConnections();
-		$messages    = $connections->get_pending_messages( $agent_id, $limit );
+		$messages    = $connections->get_pending_messages( $agent_id, $limit, $session_ids );
 
 		return rest_ensure_response( array(
 			'success'  => true,
@@ -218,12 +216,12 @@ class BridgeEndpoints {
 	 */
 	public static function handle_ack( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
 		$agent_id    = PermissionHelper::get_acting_agent_id();
-		$message_ids = $request->get_param( 'message_ids' );
+		$message_ids = self::resolve_message_ids( $request );
 
-		if ( empty( $message_ids ) || ! is_array( $message_ids ) ) {
+		if ( empty( $message_ids ) ) {
 			return new WP_Error(
 				'invalid_message_ids',
-				'message_ids must be a non-empty array.',
+				'message_ids must be a non-empty array. Legacy ids is also accepted.',
 				array( 'status' => 400 )
 			);
 		}
@@ -258,8 +256,7 @@ class BridgeEndpoints {
 
 		$site_host = wp_parse_url( get_site_url(), PHP_URL_HOST );
 
-		return rest_ensure_response( array(
-			'success'    => true,
+		$data = array(
 			'agent_id'   => (int) $agent['agent_id'],
 			'agent_slug' => $agent['agent_slug'],
 			'agent_name' => $agent['agent_name'],
@@ -267,7 +264,17 @@ class BridgeEndpoints {
 			'site_url'   => get_site_url(),
 			'site_name'  => get_bloginfo( 'name' ),
 			'site_host'  => $site_host,
-		) );
+		);
+
+		return rest_ensure_response(
+			array_merge(
+				array(
+					'success' => true,
+					'data'    => $data,
+				),
+				$data
+			)
+		);
 	}
 
 	/**
@@ -326,9 +333,11 @@ class BridgeEndpoints {
 		$site_host = wp_parse_url( get_site_url(), PHP_URL_HOST );
 
 		return rest_ensure_response( array(
-			'success'     => true,
+			'success'      => true,
 			'access_token' => $token_result['raw_token'],
 			'token_type'   => 'Bearer',
+			'token_id'     => (int) $token_result['token_id'],
+			'token_label'  => $token_label,
 			'agent_id'     => (int) $agent['agent_id'],
 			'agent_slug'   => $agent['agent_slug'],
 			'agent_name'   => $agent['agent_name'],
@@ -397,5 +406,46 @@ class BridgeEndpoints {
 			),
 			$redirect_uri
 		);
+	}
+
+	/**
+	 * Normalize a request value into a list of strings.
+	 *
+	 * Accepts arrays, comma-separated strings, or repeated values passed through
+	 * WP_REST_Request.
+	 *
+	 * @param mixed $value Raw request value.
+	 * @return string[]
+	 */
+	private static function normalize_string_list( mixed $value ): array {
+		if ( is_array( $value ) ) {
+			$values = $value;
+		} elseif ( is_string( $value ) && '' !== $value ) {
+			$values = explode( ',', $value );
+		} else {
+			$values = array();
+		}
+
+		return array_values(
+			array_filter(
+				array_map( 'sanitize_text_field', $values )
+			)
+		);
+	}
+
+	/**
+	 * Resolve ack message IDs from canonical or legacy field names.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return string[]
+	 */
+	private static function resolve_message_ids( WP_REST_Request $request ): array {
+		$message_ids = $request->get_param( 'message_ids' );
+
+		if ( empty( $message_ids ) ) {
+			$message_ids = $request->get_param( 'ids' );
+		}
+
+		return self::normalize_string_list( $message_ids );
 	}
 }

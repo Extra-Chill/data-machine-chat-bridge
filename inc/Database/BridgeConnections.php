@@ -122,23 +122,36 @@ class BridgeConnections {
 	/**
 	 * Get pending (undelivered) messages for an agent.
 	 *
-	 * @param int $agent_id Agent ID.
-	 * @param int $limit    Maximum messages to return.
+	 * @param int        $agent_id    Agent ID.
+	 * @param int        $limit       Maximum messages to return.
+	 * @param string[]   $session_ids Optional session IDs to scope the queue.
 	 * @return array List of pending messages.
 	 */
-	public function get_pending_messages( int $agent_id, int $limit = 50 ): array {
+	public function get_pending_messages( int $agent_id, int $limit = 50, array $session_ids = array() ): array {
 		global $wpdb;
 
 		$table_name = $wpdb->prefix . 'datamachine_bridge_messages';
+		$query      = "SELECT queue_id, session_id, content, created_at FROM %i WHERE agent_id = %d AND status = 'pending'";
+		$params     = array( $table_name, $agent_id );
+
+		$session_ids = array_values(
+			array_filter(
+				array_map( 'sanitize_text_field', $session_ids )
+			)
+		);
+
+		if ( ! empty( $session_ids ) ) {
+			$placeholders = implode( ',', array_fill( 0, count( $session_ids ), '%s' ) );
+			$query       .= " AND session_id IN ({$placeholders})";
+			$params       = array_merge( $params, $session_ids );
+		}
+
+		$query  .= ' ORDER BY created_at ASC LIMIT %d';
+		$params[] = $limit;
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
 		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT queue_id, session_id, content, created_at FROM %i WHERE agent_id = %d AND status = 'pending' ORDER BY created_at ASC LIMIT %d",
-				$table_name,
-				$agent_id,
-				$limit
-			),
+			$wpdb->prepare( $query, $params ),
 			ARRAY_A
 		);
 		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared

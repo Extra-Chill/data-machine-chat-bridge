@@ -2,11 +2,11 @@
 /**
  * Response Listener
  *
- * Hooks into datamachine_chat_response_complete and delivers agent responses
- * to registered bridge callback URLs via wp_remote_post(). Falls back to
- * storing in the pending queue for polling if webhook delivery fails.
+	 * Hooks into datamachine_chat_response_complete and delivers agent responses
+	 * to registered bridge callback URLs via wp_remote_post().
  *
- * V1: fire-and-forget webhook dispatch. No scheduling, no retry.
+	 * Messages are always queued first; webhook delivery is best-effort and the
+	 * bridge client must explicitly acknowledge queue items after receiving them.
  *
  * @package DataMachineChatBridge\Queue
  * @since 0.1.0
@@ -98,18 +98,10 @@ class ResponseListener {
 				'timeout' => 10,
 			) );
 
-			if ( ! is_wp_error( $response ) ) {
-				$status = wp_remote_retrieve_response_code( $response );
-				if ( $status >= 200 && $status < 300 ) {
-					// Webhook succeeded — auto-acknowledge.
-					$connections->acknowledge_messages( array( $queue_id ) );
-				}
-			}
-
 			do_action(
 				'datamachine_log',
 				is_wp_error( $response ) ? 'warning' : 'info',
-				is_wp_error( $response ) ? 'Chat bridge: webhook delivery failed' : 'Chat bridge: webhook delivered',
+				is_wp_error( $response ) ? 'Chat bridge: webhook delivery failed' : 'Chat bridge: webhook delivered; awaiting bridge ack',
 				array(
 					'session_id' => $session_id,
 					'agent_id'   => $agent_id,
