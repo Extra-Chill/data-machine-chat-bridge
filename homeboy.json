@@ -1,0 +1,22 @@
+{
+  "auto_cleanup": false,
+  "changelog_target": "docs/CHANGELOG.md",
+  "extensions": {
+    "wordpress": {
+      "php": "8.2",
+      "node": "20"
+    }
+  },
+  "id": "data-machine-chat-bridge",
+  "remote_path": "wp-content/plugins/data-machine-chat-bridge",
+  "version_targets": [
+    {
+      "file": "data-machine-chat-bridge.php",
+      "pattern": "Version:\\s*([0-9.]+)"
+    },
+    {
+      "file": "data-machine-chat-bridge.php",
+      "pattern": "DATAMACHINE_CHAT_BRIDGE_VERSION',\\s*'([0-9.]+)'"
+    }
+  ]
+}
