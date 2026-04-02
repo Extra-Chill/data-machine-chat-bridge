@@ -184,6 +184,82 @@ class BridgeConnections {
 	}
 
 	/**
+	 * Acknowledge messages as delivered, scoped to a specific agent.
+	 *
+	 * Unlike acknowledge_messages(), this only marks messages WHERE agent_id
+	 * matches — a compromised token cannot ack other agents' messages.
+	 *
+	 * @param array $queue_ids Queue IDs to mark as delivered.
+	 * @param int   $agent_id  Agent ID to scope the update to.
+	 * @return int Number of messages acknowledged.
+	 */
+	public function acknowledge_messages_for_agent( array $queue_ids, int $agent_id ): int {
+		global $wpdb;
+
+		if ( empty( $queue_ids ) || $agent_id <= 0 ) {
+			return 0;
+		}
+
+		$table_name    = $wpdb->prefix . 'datamachine_bridge_messages';
+		$placeholders  = implode( ',', array_fill( 0, count( $queue_ids ), '%s' ) );
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND agent_id = %d AND status = 'pending'",
+				array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids, array( $agent_id ) )
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+
+		return (int) $updated;
+	}
+
+	/**
+	 * Delete delivered messages older than a given number of days.
+	 *
+	 * @param int $days Age threshold in days. Default 7.
+	 * @return int Number of messages deleted.
+	 */
+	public function cleanup_delivered_messages( int $days = 7 ): int {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'datamachine_bridge_messages';
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM %i WHERE status = 'delivered' AND delivered_at < DATE_SUB(%s, INTERVAL %d DAY)",
+				$table_name,
+				current_time( 'mysql', true ),
+				$days
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
+
+		return (int) $deleted;
+	}
+
+	/**
+	 * Remove stale bridge registrations with no heartbeat for over 24 hours.
+	 *
+	 * @return int Number of registrations removed.
+	 */
+	public function cleanup_stale_registrations(): int {
+		$registrations = $this->get_all_registrations();
+		$cutoff        = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
+		$initial_count = count( $registrations );
+
+		$registrations = array_filter( $registrations, function ( $reg ) use ( $cutoff ) {
+			return $reg['last_seen'] >= $cutoff;
+		} );
+
+		$this->save_registrations( array_values( $registrations ) );
+
+		return $initial_count - count( $registrations );
+	}
+
+	/**
 	 * Get all registrations from options.
 	 */
 	private function get_all_registrations(): array {

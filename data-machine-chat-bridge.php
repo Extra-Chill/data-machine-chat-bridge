@@ -45,11 +45,17 @@ function datamachine_chat_bridge_bootstrap() {
 	// Register REST endpoints.
 	\DataMachineChatBridge\Api\BridgeEndpoints::register();
 
+	// Register PKCE authorize hook into core's AgentAuthorize flow.
+	\DataMachineChatBridge\Api\BridgeEndpoints::register_pkce_hook();
+
 	// Register the response listener (hooks into core's chat response action).
 	\DataMachineChatBridge\Queue\ResponseListener::register();
 
 	// Register execution context.
 	add_action( 'datamachine_contexts', array( \DataMachineChatBridge\BridgeContext::class, 'register' ) );
+
+	// Register daily cleanup cron.
+	\DataMachineChatBridge\Cron\Cleanup::register();
 }
 add_action( 'plugins_loaded', 'datamachine_chat_bridge_bootstrap', 20 );
 
@@ -60,3 +66,11 @@ function datamachine_chat_bridge_activate() {
 	\DataMachineChatBridge\Database\Schema::create_tables();
 }
 register_activation_hook( __FILE__, 'datamachine_chat_bridge_activate' );
+
+/**
+ * Unschedule cron on deactivation.
+ */
+function datamachine_chat_bridge_deactivate() {
+	\DataMachineChatBridge\Cron\Cleanup::unschedule();
+}
+register_deactivation_hook( __FILE__, 'datamachine_chat_bridge_deactivate' );

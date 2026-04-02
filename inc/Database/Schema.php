@@ -2,7 +2,9 @@
 /**
  * Database Schema
  *
- * Creates the bridge_messages table on plugin activation.
+ * Creates bridge tables on plugin activation:
+ * - bridge_messages: outbound message queue for webhook/poll delivery
+ * - bridge_auth_codes: PKCE authorization codes for OAuth login flow
  *
  * @package DataMachineChatBridge\Database
  * @since 0.1.0
@@ -17,15 +19,20 @@ if ( ! defined( 'WPINC' ) ) {
 class Schema {
 
 	/**
-	 * Create the bridge messages table.
+	 * Create all bridge tables.
 	 */
 	public static function create_tables(): void {
 		global $wpdb;
 
-		$table_name      = $wpdb->prefix . 'datamachine_bridge_messages';
 		$charset_collate = $wpdb->get_charset_collate();
 
-		$sql = "CREATE TABLE IF NOT EXISTS {$table_name} (
+		$messages_table = $wpdb->prefix . 'datamachine_bridge_messages';
+		$auth_codes_table = $wpdb->prefix . 'datamachine_bridge_auth_codes';
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		// Outbound message queue.
+		dbDelta( "CREATE TABLE {$messages_table} (
 			queue_id VARCHAR(50) NOT NULL,
 			agent_id BIGINT UNSIGNED NOT NULL,
 			session_id VARCHAR(50) NOT NULL,
@@ -37,9 +44,20 @@ class Schema {
 			PRIMARY KEY  (queue_id),
 			KEY idx_agent_status (agent_id, status),
 			KEY idx_created (created_at)
-		) {$charset_collate};";
+		) {$charset_collate};" );
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
+		// PKCE authorization codes for OAuth login flow.
+		dbDelta( "CREATE TABLE {$auth_codes_table} (
+			code VARCHAR(64) NOT NULL,
+			agent_id BIGINT UNSIGNED NOT NULL,
+			user_id BIGINT UNSIGNED NOT NULL,
+			code_challenge VARCHAR(64) NOT NULL,
+			redirect_uri VARCHAR(500) NOT NULL,
+			label VARCHAR(100) NOT NULL DEFAULT '',
+			expires_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (code),
+			KEY idx_expires (expires_at)
+		) {$charset_collate};" );
 	}
 }
