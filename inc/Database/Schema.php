@@ -35,6 +35,7 @@ class Schema {
 		dbDelta( "CREATE TABLE {$messages_table} (
 			queue_id VARCHAR(50) NOT NULL,
 			agent_id BIGINT UNSIGNED NOT NULL,
+			token_id BIGINT UNSIGNED NULL,
 			session_id VARCHAR(50) NOT NULL,
 			content LONGTEXT NOT NULL,
 			status ENUM('pending','delivered','failed') NOT NULL DEFAULT 'pending',
@@ -43,6 +44,7 @@ class Schema {
 			delivered_at DATETIME DEFAULT NULL,
 			PRIMARY KEY  (queue_id),
 			KEY idx_agent_status (agent_id, status),
+			KEY idx_token_status (token_id, status),
 			KEY idx_created (created_at)
 		) {$charset_collate};" );
 

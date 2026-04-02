@@ -14,6 +14,7 @@
 
 namespace DataMachineChatBridge\Queue;
 
+use DataMachine\Core\Database\Chat\Chat as ChatDatabase;
 use DataMachineChatBridge\Database\BridgeConnections;
 
 if ( ! defined( 'WPINC' ) ) {
@@ -46,7 +47,10 @@ class ResponseListener {
 		}
 
 		$connections = new BridgeConnections();
-		$bridges     = $connections->get_bridges_for_agent( $agent_id );
+		$chat_db     = new ChatDatabase();
+		$session     = $chat_db->get_session( $session_id );
+		$token_id    = (int) ( $session['metadata']['token_id'] ?? 0 );
+		$bridges     = $connections->get_bridges_for_token( $agent_id, $token_id > 0 ? $token_id : null );
 
 		if ( empty( $bridges ) ) {
 			return;
@@ -68,7 +72,11 @@ class ResponseListener {
 		);
 
 		// Store in pending queue (always — this is the source of truth for polling).
-		$queue_id = $connections->enqueue_message( $agent_id, $message );
+		if ( $token_id > 0 ) {
+			$message['token_id'] = $token_id;
+		}
+
+		$queue_id = $connections->enqueue_message( $agent_id, $token_id > 0 ? $token_id : null, $message );
 
 		if ( is_wp_error( $queue_id ) ) {
 			do_action(
@@ -78,6 +86,7 @@ class ResponseListener {
 				array(
 					'session_id' => $session_id,
 					'agent_id'   => $agent_id,
+					'token_id'   => $token_id,
 					'error'      => $queue_id->get_error_message(),
 				)
 			);
@@ -105,6 +114,7 @@ class ResponseListener {
 				array(
 					'session_id' => $session_id,
 					'agent_id'   => $agent_id,
+					'token_id'   => $token_id,
 					'bridge_id'  => $bridge['bridge_id'] ?? '',
 					'status'     => is_wp_error( $response ) ? $response->get_error_message() : wp_remote_retrieve_response_code( $response ),
 				)

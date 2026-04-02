@@ -30,12 +30,13 @@ class BridgeConnections {
 	/**
 	 * Register or update a bridge connection for an agent.
 	 *
-	 * @param int    $agent_id     Agent ID.
-	 * @param string $callback_url Webhook callback URL.
-	 * @param string $bridge_id    Optional bridge instance identifier.
+	 * @param int      $agent_id     Agent ID.
+	 * @param int|null $token_id     Token ID for login-level scoping.
+	 * @param string   $callback_url Webhook callback URL.
+	 * @param string   $bridge_id    Optional bridge instance identifier.
 	 * @return string|WP_Error Registration ID on success.
 	 */
-	public function register_bridge( int $agent_id, string $callback_url, string $bridge_id = '' ): string|WP_Error {
+	public function register_bridge( int $agent_id, ?int $token_id, string $callback_url, string $bridge_id = '' ): string|WP_Error {
 		if ( $agent_id <= 0 ) {
 			return new WP_Error( 'invalid_agent', 'Invalid agent ID.' );
 		}
@@ -47,11 +48,12 @@ class BridgeConnections {
 		$registrations   = $this->get_all_registrations();
 		$registration_id = wp_generate_uuid4();
 
-		// Update existing registration for this agent+bridge_id combo.
+		// Update existing registration for this agent+token+bridge_id combo.
 		foreach ( $registrations as $key => $reg ) {
-			if ( (int) $reg['agent_id'] === $agent_id && $reg['bridge_id'] === $bridge_id ) {
+			if ( (int) $reg['agent_id'] === $agent_id && (int) ( $reg['token_id'] ?? 0 ) === (int) $token_id && $reg['bridge_id'] === $bridge_id ) {
 				$registration_id            = $reg['registration_id'];
 				$registrations[ $key ]['callback_url'] = $callback_url;
+				$registrations[ $key ]['token_id']     = $token_id;
 				$registrations[ $key ]['last_seen']    = current_time( 'mysql', true );
 				$this->save_registrations( $registrations );
 				return $registration_id;
@@ -61,6 +63,7 @@ class BridgeConnections {
 		$registrations[] = array(
 			'registration_id' => $registration_id,
 			'agent_id'        => $agent_id,
+			'token_id'        => $token_id,
 			'callback_url'    => $callback_url,
 			'bridge_id'       => $bridge_id,
 			'registered_at'   => current_time( 'mysql', true ),
@@ -75,25 +78,61 @@ class BridgeConnections {
 	/**
 	 * Get all registered bridges for a specific agent.
 	 *
-	 * @param int $agent_id Agent ID.
+	 * @param int      $agent_id Agent ID.
+	 * @param int|null $token_id Optional token ID.
 	 * @return array List of bridge registrations.
 	 */
-	public function get_bridges_for_agent( int $agent_id ): array {
+	public function get_bridges_for_agent( int $agent_id, ?int $token_id = null ): array {
 		$registrations = $this->get_all_registrations();
 
+		return array_values( array_filter( $registrations, function ( $reg ) use ( $agent_id, $token_id ) {
+			if ( (int) $reg['agent_id'] !== $agent_id ) {
+				return false;
+			}
+
+			if ( null === $token_id ) {
+				return true;
+			}
+
+			return (int) ( $reg['token_id'] ?? 0 ) === (int) $token_id;
+		} ) );
+	}
+
+	/**
+	 * Get all registered bridges for a specific token.
+	 *
+	 * Falls back to agent-wide registrations with no token_id for backwards
+	 * compatibility, but prefers exact token matches when available.
+	 *
+	 * @param int      $agent_id Agent ID.
+	 * @param int|null $token_id Token ID.
+	 * @return array List of bridge registrations.
+	 */
+	public function get_bridges_for_token( int $agent_id, ?int $token_id ): array {
+		$registrations = $this->get_all_registrations();
+
+		$exact = array_values( array_filter( $registrations, function ( $reg ) use ( $agent_id, $token_id ) {
+			return (int) $reg['agent_id'] === $agent_id && (int) ( $reg['token_id'] ?? 0 ) === (int) $token_id;
+		} ) );
+
+		if ( ! empty( $exact ) ) {
+			return $exact;
+		}
+
 		return array_values( array_filter( $registrations, function ( $reg ) use ( $agent_id ) {
-			return (int) $reg['agent_id'] === $agent_id;
+			return (int) $reg['agent_id'] === $agent_id && empty( $reg['token_id'] );
 		} ) );
 	}
 
 	/**
 	 * Enqueue a message for bridge delivery.
 	 *
-	 * @param int   $agent_id Agent ID.
-	 * @param array $message  Message payload.
+	 * @param int      $agent_id Agent ID.
+	 * @param int|null $token_id Token ID for login-level routing.
+	 * @param array    $message  Message payload.
 	 * @return string|WP_Error Queue ID on success.
 	 */
-	public function enqueue_message( int $agent_id, array $message ): string|WP_Error {
+	public function enqueue_message( int $agent_id, ?int $token_id, array $message ): string|WP_Error {
 		global $wpdb;
 
 		$table_name = $wpdb->prefix . 'datamachine_bridge_messages';
@@ -104,12 +143,13 @@ class BridgeConnections {
 			array(
 				'queue_id'   => $queue_id,
 				'agent_id'   => $agent_id,
+				'token_id'   => $token_id,
 				'session_id' => $message['session_id'] ?? '',
 				'content'    => wp_json_encode( $message ),
 				'status'     => 'pending',
 				'created_at' => current_time( 'mysql', true ),
 			),
-			array( '%s', '%d', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( ! $inserted ) {
@@ -123,16 +163,22 @@ class BridgeConnections {
 	 * Get pending (undelivered) messages for an agent.
 	 *
 	 * @param int        $agent_id    Agent ID.
+	 * @param int|null   $token_id    Optional token ID.
 	 * @param int        $limit       Maximum messages to return.
 	 * @param string[]   $session_ids Optional session IDs to scope the queue.
 	 * @return array List of pending messages.
 	 */
-	public function get_pending_messages( int $agent_id, int $limit = 50, array $session_ids = array() ): array {
+	public function get_pending_messages( int $agent_id, ?int $token_id = null, int $limit = 50, array $session_ids = array() ): array {
 		global $wpdb;
 
 		$table_name = $wpdb->prefix . 'datamachine_bridge_messages';
 		$query      = "SELECT queue_id, session_id, content, created_at FROM %i WHERE agent_id = %d AND status = 'pending'";
 		$params     = array( $table_name, $agent_id );
+
+		if ( null !== $token_id ) {
+			$query   .= ' AND token_id = %d';
+			$params[] = $token_id;
+		}
 
 		$session_ids = array_values(
 			array_filter(
@@ -202,11 +248,12 @@ class BridgeConnections {
 	 * Unlike acknowledge_messages(), this only marks messages WHERE agent_id
 	 * matches — a compromised token cannot ack other agents' messages.
 	 *
-	 * @param array $queue_ids Queue IDs to mark as delivered.
-	 * @param int   $agent_id  Agent ID to scope the update to.
+	 * @param array    $queue_ids Queue IDs to mark as delivered.
+	 * @param int      $agent_id  Agent ID to scope the update to.
+	 * @param int|null $token_id  Token ID to scope the update to.
 	 * @return int Number of messages acknowledged.
 	 */
-	public function acknowledge_messages_for_agent( array $queue_ids, int $agent_id ): int {
+	public function acknowledge_messages_for_agent( array $queue_ids, int $agent_id, ?int $token_id = null ): int {
 		global $wpdb;
 
 		if ( empty( $queue_ids ) || $agent_id <= 0 ) {
@@ -215,13 +262,19 @@ class BridgeConnections {
 
 		$table_name    = $wpdb->prefix . 'datamachine_bridge_messages';
 		$placeholders  = implode( ',', array_fill( 0, count( $queue_ids ), '%s' ) );
+		$query         = "UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND agent_id = %d";
+		$params        = array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids, array( $agent_id ) );
+
+		if ( null !== $token_id ) {
+			$query   .= ' AND token_id = %d';
+			$params[] = $token_id;
+		}
+
+		$query .= " AND status = 'pending'";
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
 		$updated = $wpdb->query(
-			$wpdb->prepare(
-				"UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND agent_id = %d AND status = 'pending'",
-				array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids, array( $agent_id ) )
-			)
+			$wpdb->prepare( $query, $params )
 		);
 		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
 

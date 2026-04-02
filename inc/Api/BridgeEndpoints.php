@@ -167,6 +167,7 @@ class BridgeEndpoints {
 	 */
 	public static function handle_register( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
 		$agent_id     = PermissionHelper::get_acting_agent_id();
+		$token_id     = PermissionHelper::get_acting_token_id();
 		$callback_url = $request->get_param( 'callback_url' );
 		$bridge_id    = $request->get_param( 'bridge_id' ) ?? '';
 
@@ -175,7 +176,7 @@ class BridgeEndpoints {
 		}
 
 		$connections = new BridgeConnections();
-		$result      = $connections->register_bridge( $agent_id, $callback_url, $bridge_id );
+		$result      = $connections->register_bridge( $agent_id, $token_id, $callback_url, $bridge_id );
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -185,6 +186,7 @@ class BridgeEndpoints {
 			'success'         => true,
 			'registration_id' => $result,
 			'agent_id'        => $agent_id,
+			'token_id'        => $token_id,
 			'bridge_id'       => $bridge_id,
 			'callback_url'    => $callback_url,
 			'poll_endpoint'   => rest_url( 'chat-bridge/v1/pending' ),
@@ -196,11 +198,12 @@ class BridgeEndpoints {
 	 */
 	public static function handle_pending( WP_REST_Request $request ): \WP_REST_Response {
 		$agent_id    = PermissionHelper::get_acting_agent_id();
+		$token_id    = PermissionHelper::get_acting_token_id();
 		$limit       = $request->get_param( 'limit' ) ?: 50;
 		$session_ids = self::normalize_string_list( $request->get_param( 'session_ids' ) );
 
 		$connections = new BridgeConnections();
-		$messages    = $connections->get_pending_messages( $agent_id, $limit, $session_ids );
+		$messages    = $connections->get_pending_messages( $agent_id, $token_id, $limit, $session_ids );
 
 		return rest_ensure_response( array(
 			'success'  => true,
@@ -216,6 +219,7 @@ class BridgeEndpoints {
 	 */
 	public static function handle_ack( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
 		$agent_id    = PermissionHelper::get_acting_agent_id();
+		$token_id    = PermissionHelper::get_acting_token_id();
 		$message_ids = self::resolve_message_ids( $request );
 
 		if ( empty( $message_ids ) ) {
@@ -229,7 +233,7 @@ class BridgeEndpoints {
 		$connections = new BridgeConnections();
 
 		// Scope: only ack messages that belong to this agent.
-		$acknowledged = $connections->acknowledge_messages_for_agent( $message_ids, (int) $agent_id );
+		$acknowledged = $connections->acknowledge_messages_for_agent( $message_ids, (int) $agent_id, $token_id );
 
 		return rest_ensure_response( array(
 			'success'      => true,
@@ -258,6 +262,7 @@ class BridgeEndpoints {
 
 		$data = array(
 			'agent_id'   => (int) $agent['agent_id'],
+			'token_id'   => PermissionHelper::get_acting_token_id(),
 			'agent_slug' => $agent['agent_slug'],
 			'agent_name' => $agent['agent_name'],
 			'status'     => $agent['status'] ?? 'active',
