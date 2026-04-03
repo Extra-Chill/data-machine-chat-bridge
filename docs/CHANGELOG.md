@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## [0.3.0] - 2026-04-03
+
+### Added
+- add onboarding metadata endpoint and bridge /send inbound message API
+- implement PKCE authorize hook, agent-scoped ack, and cleanup cron
+
+### Changed
+- migrate from chat-bridge/v1 to datamachine/v1/bridge namespace
+- Scaffold data-machine-chat-bridge extension plugin
+
+### Fixed
+- run bridge token schema upgrades automatically
+- scope chat bridge delivery by token login
+- align bridge contract with the Beeper client
+- Fix BridgeEndpoints: correct handle_register, add missing handle_pending
 
 ## [0.2.0] - 2026-04-03
 
