@@ -3,17 +3,18 @@
  * Bridge REST Endpoints
  *
  * Registers /chat-bridge/v1 routes for external bridge clients:
- * - POST /register  — register a bridge with a callback URL
- * - GET  /pending   — poll for undelivered agent responses
- * - POST /ack       — acknowledge delivered messages
- * - GET  /identity  — get agent identity for this token
- * - GET  /authorize — PKCE-aware OAuth authorize (proxies to core or returns auth code)
- * - POST /token     — exchange PKCE auth code for bearer token
+ * - POST /register    — register a bridge with a callback URL
+ * - GET  /pending     — poll for undelivered agent responses
+ * - POST /ack         — acknowledge delivered messages
+ * - GET  /identity    — get agent identity for this token
+ * - POST /send        — send a user message to an agent (bridge inbound)
+ * - GET  /onboarding  — get onboarding metadata for first-run UX (unauthenticated)
+ * - POST /token       — exchange PKCE auth code for bearer token
  *
- * All /register, /pending, /ack, /identity endpoints require agent token auth
+ * All /register, /pending, /ack, /identity, /send endpoints require agent token auth
  * (handled by core's AgentAuthMiddleware).
  *
- * /authorize and /token are unauthenticated (login flow endpoints).
+ * /onboarding and /token are unauthenticated (login flow endpoints).
  *
  * @package DataMachineChatBridge\Api
  * @since 0.1.0
@@ -124,7 +125,51 @@ class BridgeEndpoints {
 			)
 		);
 
-		// --- Unauthenticated endpoints (login flow) ---
+		// POST /send — bridge sends a user message to an agent.
+		register_rest_route(
+			'chat-bridge/v1',
+			'/send',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( self::class, 'handle_send' ),
+				'permission_callback' => $token_auth,
+				'args'                => array(
+					'message'    => array(
+						'type'              => 'string',
+						'required'          => true,
+						'description'       => 'The user message text.',
+						'sanitize_callback' => 'sanitize_textarea_field',
+					),
+					'session_id' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => 'Existing session ID to continue. Omit to create or reuse a session.',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
+
+		// --- Unauthenticated endpoints (login/onboarding flow) ---
+
+		// GET /onboarding — onboarding metadata for bridge first-run UX.
+		register_rest_route(
+			'chat-bridge/v1',
+			'/onboarding',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( self::class, 'handle_onboarding' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'agent_slug' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => 'Agent slug to get onboarding config for. If omitted, returns site-level defaults.',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
 
 		// POST /token — exchange PKCE auth code for bearer token.
 		register_rest_route(
@@ -348,6 +393,154 @@ class BridgeEndpoints {
 			'agent_name'   => $agent['agent_name'],
 			'site_url'     => get_site_url(),
 			'site_host'    => $site_host,
+		) );
+	}
+
+	/**
+	 * Handle GET /onboarding — return onboarding metadata for bridge first-run UX.
+	 *
+	 * This is the primary discovery endpoint for external bridge clients. It tells
+	 * the client everything it needs to show a polished first-run experience:
+	 * agent display info, welcome message, login URL, and capabilities.
+	 *
+	 * The response is populated by the `datamachine_bridge_onboarding_config` filter,
+	 * which platform plugins (e.g., Extra Chill Roadie) hook to provide custom values.
+	 * Data Machine core stays generic — all product-specific defaults live elsewhere.
+	 *
+	 * @since 0.2.0
+	 */
+	public static function handle_onboarding( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
+		$agent_slug = $request->get_param( 'agent_slug' ) ?? '';
+
+		$agent      = null;
+		$agent_data = array();
+
+		if ( ! empty( $agent_slug ) ) {
+			$agents_repo = new Agents();
+			$agent       = $agents_repo->get_by_slug( $agent_slug );
+
+			if ( $agent ) {
+				$agent_data = array(
+					'agent_id'   => (int) $agent['agent_id'],
+					'agent_slug' => $agent['agent_slug'],
+					'agent_name' => $agent['agent_name'],
+					'status'     => $agent['status'] ?? 'active',
+				);
+			}
+		}
+
+		$site_host = wp_parse_url( get_site_url(), PHP_URL_HOST );
+
+		// Build the authorize URL template.
+		$authorize_url = rest_url( 'datamachine/v1/agent/authorize' );
+
+		// Base onboarding config — intentionally minimal.
+		// Platform plugins add product-specific values via the filter.
+		$config = array(
+			'site_url'        => get_site_url(),
+			'site_name'       => get_bloginfo( 'name' ),
+			'site_host'       => $site_host,
+			'authorize_url'   => $authorize_url,
+			'agent'           => ! empty( $agent_data ) ? $agent_data : null,
+			'display_name'    => $agent ? $agent['agent_name'] : get_bloginfo( 'name' ),
+			'description'     => '',
+			'avatar_url'      => '',
+			'welcome_message' => '',
+			'login_label'     => 'Sign in',
+			'login_instructions' => '',
+			'capabilities'    => array(),
+			'room_name'       => '',
+			'room_topic'      => '',
+		);
+
+		/**
+		 * Filter the bridge onboarding configuration.
+		 *
+		 * Platform plugins hook this to provide product-specific onboarding
+		 * metadata (welcome messages, descriptions, avatars, etc.).
+		 * Data Machine core provides the skeleton; the platform fills it in.
+		 *
+		 * @since 0.2.0
+		 *
+		 * @param array       $config     Onboarding config array.
+		 * @param string      $agent_slug Agent slug requested (may be empty).
+		 * @param array|null  $agent      Agent row from the database, or null.
+		 */
+		$config = apply_filters( 'datamachine_bridge_onboarding_config', $config, $agent_slug, $agent );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'data'    => $config,
+		) );
+	}
+
+	/**
+	 * Handle POST /send — bridge sends a user message to an agent.
+	 *
+	 * This is the dedicated inbound message endpoint for bridge clients. It wraps
+	 * the core chat API with bridge-specific session management: the bridge doesn't
+	 * need to know about session IDs or agent slugs — those are resolved from the
+	 * authenticated token context.
+	 *
+	 * @since 0.2.0
+	 */
+	public static function handle_send( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
+		$agent_id   = PermissionHelper::get_acting_agent_id();
+		$token_id   = PermissionHelper::get_acting_token_id();
+		$message    = $request->get_param( 'message' );
+		$session_id = $request->get_param( 'session_id' ) ?? '';
+
+		if ( ! $agent_id ) {
+			return new WP_Error( 'no_agent', 'No agent context found.', array( 'status' => 400 ) );
+		}
+
+		if ( empty( $message ) ) {
+			return new WP_Error( 'empty_message', 'Message cannot be empty.', array( 'status' => 400 ) );
+		}
+
+		// Resolve agent slug for the chat request.
+		$agents_repo = new Agents();
+		$agent       = $agents_repo->get_agent( $agent_id );
+
+		if ( ! $agent ) {
+			return new WP_Error( 'agent_not_found', 'Agent not found.', array( 'status' => 404 ) );
+		}
+
+		// Build the internal chat request.
+		$chat_request = new WP_REST_Request( 'POST', '/datamachine/v1/chat' );
+		$chat_request->set_param( 'message', $message );
+		$chat_request->set_param( 'agent', $agent['agent_slug'] );
+
+		if ( ! empty( $session_id ) ) {
+			$chat_request->set_param( 'session_id', $session_id );
+		}
+
+		// Add bridge context metadata.
+		$chat_request->set_param( 'client_context', array(
+			'source'   => 'bridge',
+			'token_id' => $token_id,
+		) );
+
+		// Dispatch internally — this goes through the full chat pipeline.
+		$response = rest_do_request( $chat_request );
+
+		if ( $response->is_error() ) {
+			$error = $response->as_error();
+			return new WP_Error(
+				$error->get_error_code(),
+				$error->get_error_message(),
+				array( 'status' => $response->get_status() )
+			);
+		}
+
+		$data = $response->get_data();
+
+		return rest_ensure_response( array(
+			'success'    => true,
+			'session_id' => $data['session_id'] ?? '',
+			'message_id' => $data['message_id'] ?? '',
+			'response'   => $data['response'] ?? '',
+			'completed'  => $data['completed'] ?? true,
 		) );
 	}
 
