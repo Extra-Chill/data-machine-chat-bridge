@@ -482,12 +482,13 @@ class BridgeEndpoints {
 	/**
 	 * Handle POST /send — bridge sends a user message to an agent.
 	 *
-	 * This is the dedicated inbound message endpoint for bridge clients. It wraps
-	 * the core chat API with bridge-specific session management: the bridge doesn't
-	 * need to know about session IDs or agent slugs — those are resolved from the
-	 * authenticated token context.
+	 * This is the dedicated inbound message endpoint for bridge clients. It
+	 * calls the datamachine/send-message ability directly — no REST-to-REST
+	 * dispatch. The bridge doesn't need to know about session IDs or agent
+	 * slugs — those are resolved from the authenticated token context.
 	 *
 	 * @since 0.2.0
+	 * @since 0.4.0 Refactored to use datamachine/send-message ability directly.
 	 */
 	public static function handle_send( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
 		$agent_id   = PermissionHelper::get_acting_agent_id();
@@ -503,49 +504,42 @@ class BridgeEndpoints {
 			return new WP_Error( 'empty_message', 'Message cannot be empty.', array( 'status' => 400 ) );
 		}
 
-		// Resolve agent slug for the chat request.
-		$agents_repo = new Agents();
-		$agent       = $agents_repo->get_agent( $agent_id );
+		// Call the ability directly — no rest_do_request indirection.
+		$ability = wp_get_ability( 'datamachine/send-message' );
 
-		if ( ! $agent ) {
-			return new WP_Error( 'agent_not_found', 'Agent not found.', array( 'status' => 404 ) );
-		}
-
-		// Build the internal chat request.
-		$chat_request = new WP_REST_Request( 'POST', '/datamachine/v1/chat' );
-		$chat_request->set_param( 'message', $message );
-		$chat_request->set_param( 'agent', $agent['agent_slug'] );
-
-		if ( ! empty( $session_id ) ) {
-			$chat_request->set_param( 'session_id', $session_id );
-		}
-
-		// Add bridge context metadata.
-		$chat_request->set_param( 'client_context', array(
-			'source'   => 'bridge',
-			'token_id' => $token_id,
-		) );
-
-		// Dispatch internally — this goes through the full chat pipeline.
-		$response = rest_do_request( $chat_request );
-
-		if ( $response->is_error() ) {
-			$error = $response->as_error();
+		if ( ! $ability ) {
 			return new WP_Error(
-				$error->get_error_code(),
-				$error->get_error_message(),
-				array( 'status' => $response->get_status() )
+				'ability_not_found',
+				'Send message ability not registered. Ensure Data Machine core is active.',
+				array( 'status' => 500 )
 			);
 		}
 
-		$data = $response->get_data();
+		$input = array(
+			'message'        => $message,
+			'agent_id'       => (int) $agent_id,
+			'client_context' => array(
+				'source'   => 'bridge',
+				'token_id' => $token_id,
+			),
+		);
+
+		if ( ! empty( $session_id ) ) {
+			$input['session_id'] = $session_id;
+		}
+
+		$result = $ability->execute( $input );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
 
 		return rest_ensure_response( array(
 			'success'    => true,
-			'session_id' => $data['session_id'] ?? '',
-			'message_id' => $data['message_id'] ?? '',
-			'response'   => $data['response'] ?? '',
-			'completed'  => $data['completed'] ?? true,
+			'session_id' => $result['session_id'] ?? '',
+			'message_id' => $result['message_id'] ?? '',
+			'response'   => $result['response'] ?? '',
+			'completed'  => $result['completed'] ?? true,
 		) );
 	}
 
