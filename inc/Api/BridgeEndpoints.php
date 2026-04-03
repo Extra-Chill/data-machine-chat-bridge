@@ -2,19 +2,19 @@
 /**
  * Bridge REST Endpoints
  *
- * Registers /chat-bridge/v1 routes for external bridge clients:
- * - POST /register    — register a bridge with a callback URL
- * - GET  /pending     — poll for undelivered agent responses
- * - POST /ack         — acknowledge delivered messages
- * - GET  /identity    — get agent identity for this token
- * - POST /send        — send a user message to an agent (bridge inbound)
- * - GET  /onboarding  — get onboarding metadata for first-run UX (unauthenticated)
- * - POST /token       — exchange PKCE auth code for bearer token
+ * Registers datamachine/v1/bridge/* routes for external bridge clients:
+ * - POST /bridge/register    — register a bridge with a callback URL
+ * - GET  /bridge/pending     — poll for undelivered agent responses
+ * - POST /bridge/ack         — acknowledge delivered messages
+ * - GET  /bridge/identity    — get agent identity for this token
+ * - POST /bridge/send        — send a user message to an agent (bridge inbound)
+ * - GET  /bridge/onboarding  — get onboarding metadata for first-run UX (unauthenticated)
+ * - POST /bridge/token       — exchange PKCE auth code for bearer token
  *
- * All /register, /pending, /ack, /identity, /send endpoints require agent token auth
+ * All /bridge/register, /pending, /ack, /identity, /send endpoints require agent token auth
  * (handled by core's AgentAuthMiddleware).
  *
- * /onboarding and /token are unauthenticated (login flow endpoints).
+ * /bridge/onboarding and /bridge/token are unauthenticated (login flow endpoints).
  *
  * @package DataMachineChatBridge\Api
  * @since 0.1.0
@@ -45,7 +45,12 @@ class BridgeEndpoints {
 	}
 
 	/**
-	 * Register /chat-bridge/v1 routes.
+	 * REST namespace constant — extensions register under datamachine/v1.
+	 */
+	private const API_NAMESPACE = 'datamachine/v1';
+
+	/**
+	 * Register datamachine/v1/bridge/* routes.
 	 */
 	public static function register_routes(): void {
 		$token_auth = function () {
@@ -54,10 +59,10 @@ class BridgeEndpoints {
 
 		// --- Authenticated endpoints (agent token required) ---
 
-		// POST /register — bridge registers itself with a callback URL.
+		// POST /bridge/register — bridge registers itself with a callback URL.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/register',
+			self::API_NAMESPACE,
+			'/bridge/register',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( self::class, 'handle_register' ),
@@ -79,10 +84,10 @@ class BridgeEndpoints {
 			)
 		);
 
-		// GET /pending — poll for undelivered messages.
+		// GET /bridge/pending — poll for undelivered messages.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/pending',
+			self::API_NAMESPACE,
+			'/bridge/pending',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( self::class, 'handle_pending' ),
@@ -102,10 +107,10 @@ class BridgeEndpoints {
 			)
 		);
 
-		// POST /ack — acknowledge delivered messages.
+		// POST /bridge/ack — acknowledge delivered messages.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/ack',
+			self::API_NAMESPACE,
+			'/bridge/ack',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( self::class, 'handle_ack' ),
@@ -114,10 +119,10 @@ class BridgeEndpoints {
 			)
 		);
 
-		// GET /identity — agent identity for this token.
+		// GET /bridge/identity — agent identity for this token.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/identity',
+			self::API_NAMESPACE,
+			'/bridge/identity',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( self::class, 'handle_identity' ),
@@ -125,10 +130,10 @@ class BridgeEndpoints {
 			)
 		);
 
-		// POST /send — bridge sends a user message to an agent.
+		// POST /bridge/send — bridge sends a user message to an agent.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/send',
+			self::API_NAMESPACE,
+			'/bridge/send',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( self::class, 'handle_send' ),
@@ -152,10 +157,10 @@ class BridgeEndpoints {
 
 		// --- Unauthenticated endpoints (login/onboarding flow) ---
 
-		// GET /onboarding — onboarding metadata for bridge first-run UX.
+		// GET /bridge/onboarding — onboarding metadata for bridge first-run UX.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/onboarding',
+			self::API_NAMESPACE,
+			'/bridge/onboarding',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( self::class, 'handle_onboarding' ),
@@ -171,10 +176,10 @@ class BridgeEndpoints {
 			)
 		);
 
-		// POST /token — exchange PKCE auth code for bearer token.
+		// POST /bridge/token — exchange PKCE auth code for bearer token.
 		register_rest_route(
-			'chat-bridge/v1',
-			'/token',
+			self::API_NAMESPACE,
+			'/bridge/token',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( self::class, 'handle_token' ),
@@ -234,7 +239,7 @@ class BridgeEndpoints {
 			'token_id'        => $token_id,
 			'bridge_id'       => $bridge_id,
 			'callback_url'    => $callback_url,
-			'poll_endpoint'   => rest_url( 'chat-bridge/v1/pending' ),
+			'poll_endpoint'   => rest_url( 'datamachine/v1/bridge/pending' ),
 		) );
 	}
 
