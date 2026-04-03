@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.1] - 2026-04-03
+
+### Fixed
+- use datamachine/send-message ability instead of rest_do_request
+
 ## [0.3.0] - 2026-04-03
 
 ### Added
