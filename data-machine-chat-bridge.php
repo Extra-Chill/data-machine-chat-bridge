@@ -3,7 +3,7 @@
  * Plugin Name: Data Machine Chat Bridge
  * Plugin URI: https://github.com/Extra-Chill/data-machine-chat-bridge
  * Description: External chat bridge connections for Data Machine. Message queue, webhook delivery, and REST API for any chat client integration.
- * Version: 0.3.1
+ * Version: 0.4.0
  * Requires at least: 6.9
  * Requires PHP: 8.2
  * Requires Plugins: data-machine
@@ -18,7 +18,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'DATAMACHINE_CHAT_BRIDGE_VERSION', '0.3.1' );
+define( 'DATAMACHINE_CHAT_BRIDGE_VERSION', '0.4.0' );
 define( 'DATAMACHINE_CHAT_BRIDGE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'DATAMACHINE_CHAT_BRIDGE_URL', plugin_dir_url( __FILE__ ) );
 

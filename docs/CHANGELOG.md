@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0] - 2026-04-20
+
+### Added
+- accept `attachments` array on `POST /bridge/send` (mirrors `/chat` schema) so bridge clients can forward multimodal messages. Pass-through to `datamachine/send-message` ability; no core changes required.
+
 ## [0.3.1] - 2026-04-03
 
 ### Fixed
