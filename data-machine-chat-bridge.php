@@ -51,8 +51,9 @@ function datamachine_chat_bridge_bootstrap() {
 	// Register the response listener (hooks into core's chat response action).
 	\DataMachineChatBridge\Queue\ResponseListener::register();
 
-	// Register execution mode.
+	// Register execution mode and app-aware guidance composer.
 	add_action( 'datamachine_agent_modes', array( \DataMachineChatBridge\BridgeContext::class, 'register' ) );
+	\DataMachineChatBridge\BridgeContext::register_guidance_filter();
 
 	// Register daily cleanup cron.
 	\DataMachineChatBridge\Cron\Cleanup::register();

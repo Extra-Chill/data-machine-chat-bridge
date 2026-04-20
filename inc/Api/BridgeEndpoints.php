@@ -151,6 +151,24 @@ class BridgeEndpoints {
 						'description'       => 'Existing session ID to continue. Omit to create or reuse a session.',
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'bridge_app' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => 'Slug of the upstream chat app (e.g. beeper, matrix, imessage, whatsapp, signal, telegram, discord). Propagated into client_context so mode guidance can adapt to the environment.',
+						'sanitize_callback' => 'sanitize_key',
+					),
+					'bridge_room'   => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => 'Upstream room/conversation identifier (opaque to DM; used only for mode guidance hints).',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'bridge_room_kind' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => 'Conversation shape: dm, group, or channel.',
+						'sanitize_callback' => 'sanitize_key',
+					),
 				),
 			)
 		);
@@ -515,13 +533,30 @@ class BridgeEndpoints {
 			);
 		}
 
+		$client_context = array(
+			'source'   => 'bridge',
+			'token_id' => $token_id,
+		);
+
+		$bridge_app = $request->get_param( 'bridge_app' );
+		if ( ! empty( $bridge_app ) ) {
+			$client_context['bridge_app'] = $bridge_app;
+		}
+
+		$bridge_room = $request->get_param( 'bridge_room' );
+		if ( ! empty( $bridge_room ) ) {
+			$client_context['bridge_room'] = $bridge_room;
+		}
+
+		$bridge_room_kind = $request->get_param( 'bridge_room_kind' );
+		if ( ! empty( $bridge_room_kind ) && in_array( $bridge_room_kind, array( 'dm', 'group', 'channel' ), true ) ) {
+			$client_context['bridge_room_kind'] = $bridge_room_kind;
+		}
+
 		$input = array(
 			'message'        => $message,
 			'agent_id'       => (int) $agent_id,
-			'client_context' => array(
-				'source'   => 'bridge',
-				'token_id' => $token_id,
-			),
+			'client_context' => $client_context,
 		);
 
 		if ( ! empty( $session_id ) ) {
