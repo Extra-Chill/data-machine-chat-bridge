@@ -1,13 +1,14 @@
 <?php
 /**
- * Bridge Execution Context
+ * Bridge Execution Mode
  *
- * Registers the 'bridge' execution context with Data Machine's ContextRegistry.
- * This allows agent context files (agents/{slug}/contexts/bridge.md) to be
- * loaded when agents respond to messages from external chat bridges.
+ * Registers the 'bridge' execution mode with Data Machine's AgentModeRegistry.
+ * This allows mode-specific guidance to be injected when agents respond to
+ * messages from external chat bridges.
  *
  * @package DataMachineChatBridge
  * @since 0.1.0
+ * @since 0.2.0 Migrated from ContextRegistry to AgentModeRegistry.
  */
 
 namespace DataMachineChatBridge;
@@ -19,19 +20,18 @@ if ( ! defined( 'WPINC' ) ) {
 class BridgeContext {
 
 	/**
-	 * Register the bridge execution context.
+	 * Register the bridge execution mode.
 	 *
-	 * @param mixed $registry ContextRegistry instance (passed by datamachine_contexts action).
+	 * Called via the `datamachine_agent_modes` action.
 	 */
-	public static function register( $registry ): void {
-		if ( ! method_exists( $registry, 'register' ) ) {
+	public static function register(): void {
+		if ( ! class_exists( '\\DataMachine\\Engine\\AI\\AgentModeRegistry' ) ) {
 			return;
 		}
 
-		$registry->register( 'bridge', array(
+		\DataMachine\Engine\AI\AgentModeRegistry::register( 'bridge', 50, array(
 			'label'       => 'Bridge',
 			'description' => 'External chat bridge connections (Beeper, Matrix, etc.)',
-			'priority'    => 50,
 		) );
 	}
 }
