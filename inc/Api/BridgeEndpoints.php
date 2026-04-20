@@ -151,6 +151,21 @@ class BridgeEndpoints {
 						'description'       => 'Existing session ID to continue. Omit to create or reuse a session.',
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'attachments' => array(
+						'type'              => 'array',
+						'required'          => false,
+						'description'       => 'Media attachments for multi-modal messages. Each item: {url, media_id, mime_type, filename}. Mirrors the /datamachine/v1/chat schema.',
+						'items'             => array(
+							'type'       => 'object',
+							'properties' => array(
+								'url'       => array( 'type' => 'string' ),
+								'media_id'  => array( 'type' => 'integer' ),
+								'mime_type' => array( 'type' => 'string' ),
+								'filename'  => array( 'type' => 'string' ),
+							),
+						),
+						'sanitize_callback' => array( self::class, 'sanitize_attachments' ),
+					),
 					'bridge_app' => array(
 						'type'              => 'string',
 						'required'          => false,
@@ -563,6 +578,11 @@ class BridgeEndpoints {
 			$input['session_id'] = $session_id;
 		}
 
+		$attachments = $request->get_param( 'attachments' );
+		if ( ! empty( $attachments ) && is_array( $attachments ) ) {
+			$input['attachments'] = $attachments;
+		}
+
 		$result = $ability->execute( $input );
 
 		if ( is_wp_error( $result ) ) {
@@ -679,5 +699,60 @@ class BridgeEndpoints {
 		}
 
 		return self::normalize_string_list( $message_ids );
+	}
+
+	/**
+	 * Sanitize the attachments array from a /bridge/send request.
+	 *
+	 * Mirrors DataMachine\Api\Chat\Chat::sanitize_attachments() shape so the
+	 * payload handed to datamachine/send-message is identical regardless of
+	 * which entry point (REST /chat or /bridge/send) produced it.
+	 *
+	 * Each item is accepted as an array with any of {url, media_id, mime_type,
+	 * filename}. Items missing BOTH url and media_id are dropped so the
+	 * orchestrator never receives empty attachments.
+	 *
+	 * @since 0.5.0
+	 *
+	 * @param mixed $attachments Raw attachments from the request.
+	 * @return array Sanitized attachments list.
+	 */
+	public static function sanitize_attachments( $attachments ): array {
+		if ( ! is_array( $attachments ) ) {
+			return array();
+		}
+
+		$sanitized = array();
+
+		foreach ( $attachments as $attachment ) {
+			if ( ! is_array( $attachment ) ) {
+				continue;
+			}
+
+			$item = array();
+
+			if ( ! empty( $attachment['url'] ) ) {
+				$item['url'] = esc_url_raw( $attachment['url'] );
+			}
+
+			if ( ! empty( $attachment['media_id'] ) ) {
+				$item['media_id'] = absint( $attachment['media_id'] );
+			}
+
+			if ( ! empty( $attachment['mime_type'] ) ) {
+				$item['mime_type'] = sanitize_mime_type( $attachment['mime_type'] );
+			}
+
+			if ( ! empty( $attachment['filename'] ) ) {
+				$item['filename'] = sanitize_file_name( $attachment['filename'] );
+			}
+
+			// Must have at least a URL or media_id — otherwise the orchestrator has nothing to ingest.
+			if ( ! empty( $item['url'] ) || ! empty( $item['media_id'] ) ) {
+				$sanitized[] = $item;
+			}
+		}
+
+		return $sanitized;
 	}
 }
