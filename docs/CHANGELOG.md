@@ -1,9 +1,12 @@
 # Changelog
 
-## [0.4.0] - 2026-04-20
+## [Unreleased]
 
 ### Added
-- accept `attachments` array on `POST /bridge/send` (mirrors `/chat` schema) so bridge clients can forward multimodal messages. Pass-through to `datamachine/send-message` ability; no core changes required.
+- accept `attachments` array on `POST /bridge/send` (mirrors `/chat` schema) so bridge clients can forward multimodal messages. Pass-through to `datamachine/send-message` ability; no core changes required. (#8)
+
+### Changed
+- **AgentMode migration**: migrate to `AgentModeRegistry` and `datamachine_agent_modes` action. Aligns with data-machine core #1129. (#6)
 
 ## [0.3.1] - 2026-04-03
 
