@@ -23,6 +23,7 @@
 namespace DataMachineChatBridge\Api;
 
 use DataMachine\Abilities\PermissionHelper;
+use DataMachine\Api\Chat\Chat;
 use DataMachine\Core\Database\Agents\Agents;
 use DataMachine\Core\Database\Agents\AgentTokens;
 use DataMachineChatBridge\Database\AuthCodes;
@@ -704,13 +705,15 @@ class BridgeEndpoints {
 	/**
 	 * Sanitize the attachments array from a /bridge/send request.
 	 *
-	 * Mirrors DataMachine\Api\Chat\Chat::sanitize_attachments() shape so the
-	 * payload handed to datamachine/send-message is identical regardless of
-	 * which entry point (REST /chat or /bridge/send) produced it.
+	 * Thin delegator to DataMachine\Api\Chat\Chat::sanitize_attachments() so the
+	 * payload handed to datamachine/send-message is identical regardless of which
+	 * entry point (REST /chat or /bridge/send) produced it. Data Machine core is a
+	 * hard dependency of this plugin (see plugin header "Requires Plugins: data-machine"
+	 * and the bootstrap class_exists guard), so the core method is always available;
+	 * keeping a single implementation removes the hand-synced copy-paste drift risk.
 	 *
-	 * Each item is accepted as an array with any of {url, media_id, mime_type,
-	 * filename}. Items missing BOTH url and media_id are dropped so the
-	 * orchestrator never receives empty attachments.
+	 * Retained as a public static method because it is referenced as the
+	 * sanitize_callback for the /bridge/send "attachments" argument.
 	 *
 	 * @since 0.5.0
 	 *
@@ -718,41 +721,6 @@ class BridgeEndpoints {
 	 * @return array Sanitized attachments list.
 	 */
 	public static function sanitize_attachments( $attachments ): array {
-		if ( ! is_array( $attachments ) ) {
-			return array();
-		}
-
-		$sanitized = array();
-
-		foreach ( $attachments as $attachment ) {
-			if ( ! is_array( $attachment ) ) {
-				continue;
-			}
-
-			$item = array();
-
-			if ( ! empty( $attachment['url'] ) ) {
-				$item['url'] = esc_url_raw( $attachment['url'] );
-			}
-
-			if ( ! empty( $attachment['media_id'] ) ) {
-				$item['media_id'] = absint( $attachment['media_id'] );
-			}
-
-			if ( ! empty( $attachment['mime_type'] ) ) {
-				$item['mime_type'] = sanitize_mime_type( $attachment['mime_type'] );
-			}
-
-			if ( ! empty( $attachment['filename'] ) ) {
-				$item['filename'] = sanitize_file_name( $attachment['filename'] );
-			}
-
-			// Must have at least a URL or media_id — otherwise the orchestrator has nothing to ingest.
-			if ( ! empty( $item['url'] ) || ! empty( $item['media_id'] ) ) {
-				$sanitized[] = $item;
-			}
-		}
-
-		return $sanitized;
+		return Chat::sanitize_attachments( $attachments );
 	}
 }
