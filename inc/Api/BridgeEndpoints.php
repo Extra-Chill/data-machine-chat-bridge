@@ -517,34 +517,42 @@ class BridgeEndpoints {
 	 * Handle POST /send — bridge sends a user message to an agent.
 	 *
 	 * This is the dedicated inbound message endpoint for bridge clients. It
-	 * calls the datamachine/send-message ability directly — no REST-to-REST
+	 * calls the canonical agents/chat ability directly — no REST-to-REST
 	 * dispatch. The bridge doesn't need to know about session IDs or agent
 	 * slugs — those are resolved from the authenticated token context.
 	 *
+	 * Agent identity and the capability ceiling flow through the canonical
+	 * agents/chat input: the acting agent ID resolved from the bridge token is
+	 * passed as the `agent` field, and the transport context (token, room) is
+	 * passed through `client_context` so the Agents API runtime can apply tool
+	 * mediation and access checks against the authenticated principal.
+	 *
 	 * @since 0.2.0
-	 * @since 0.4.0 Refactored to use datamachine/send-message ability directly.
+	 * @since 0.4.0 Refactored to use the send-message ability directly.
+	 * @since 0.6.0 Migrated to the canonical agents/chat ability. Data Machine
+	 *              removed the legacy send-message shim in core PR #2348.
 	 */
 	public static function handle_send( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
 		$agent_id   = PermissionHelper::get_acting_agent_id();
 		$token_id   = PermissionHelper::get_acting_token_id();
-		$message    = $request->get_param( 'message' );
+		$message    = trim( (string) $request->get_param( 'message' ) );
 		$session_id = $request->get_param( 'session_id' ) ?? '';
 
 		if ( ! $agent_id ) {
 			return new WP_Error( 'no_agent', 'No agent context found.', array( 'status' => 400 ) );
 		}
 
-		if ( empty( $message ) ) {
+		if ( '' === $message ) {
 			return new WP_Error( 'empty_message', 'Message cannot be empty.', array( 'status' => 400 ) );
 		}
 
-		// Call the ability directly — no rest_do_request indirection.
-		$ability = wp_get_ability( 'datamachine/send-message' );
+		// Call the canonical Agents API chat ability directly — no rest_do_request indirection.
+		$ability = function_exists( 'wp_get_ability' ) ? wp_get_ability( 'agents/chat' ) : null;
 
 		if ( ! $ability ) {
 			return new WP_Error(
 				'ability_not_found',
-				'Send message ability not registered. Ensure Data Machine core is active.',
+				'Agents chat ability not registered. Ensure Data Machine core is active.',
 				array( 'status' => 500 )
 			);
 		}
@@ -569,9 +577,12 @@ class BridgeEndpoints {
 			$client_context['bridge_room_kind'] = $bridge_room_kind;
 		}
 
+		// Canonical agents/chat input. The acting agent ID is passed as the
+		// `agent` field (string), preserving agent identity + capability ceiling
+		// resolution inside the Agents API runtime.
 		$input = array(
 			'message'        => $message,
-			'agent_id'       => (int) $agent_id,
+			'agent'          => (string) (int) $agent_id,
 			'client_context' => $client_context,
 		);
 
@@ -590,12 +601,15 @@ class BridgeEndpoints {
 			return $result;
 		}
 
+		$result = is_array( $result ) ? $result : array();
+
+		// Map the canonical agents/chat output (`reply`) to the bridge's
+		// historical response contract (`response`).
 		return rest_ensure_response( array(
 			'success'    => true,
-			'session_id' => $result['session_id'] ?? '',
-			'message_id' => $result['message_id'] ?? '',
-			'response'   => $result['response'] ?? '',
-			'completed'  => $result['completed'] ?? true,
+			'session_id' => (string) ( $result['session_id'] ?? '' ),
+			'response'   => (string) ( $result['reply'] ?? '' ),
+			'completed'  => (bool) ( $result['completed'] ?? true ),
 		) );
 	}
 
@@ -706,7 +720,7 @@ class BridgeEndpoints {
 	 * Sanitize the attachments array from a /bridge/send request.
 	 *
 	 * Thin delegator to DataMachine\Api\Chat\Chat::sanitize_attachments() so the
-	 * payload handed to datamachine/send-message is identical regardless of which
+	 * payload handed to the agents/chat ability is identical regardless of which
 	 * entry point (REST /chat or /bridge/send) produced it. Data Machine core is a
 	 * hard dependency of this plugin (see plugin header "Requires Plugins: data-machine"
 	 * and the bootstrap class_exists guard), so the core method is always available;
