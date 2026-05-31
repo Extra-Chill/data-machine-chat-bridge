@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1] - 2026-05-31
+
+### Changed
+- phpcbf array alignment auto-fix (release preflight)
+- delegate sanitize_attachments to DM core to remove duplication
+
+### Fixed
+- migrate bridge /send from removed datamachine/send-message to canonical agents/chat
+
 ## [0.4.0] - 2026-04-21
 
 ### Added
