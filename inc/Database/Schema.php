@@ -26,7 +26,7 @@ class Schema {
 
 		$charset_collate = $wpdb->get_charset_collate();
 
-		$messages_table = $wpdb->prefix . 'datamachine_bridge_messages';
+		$messages_table   = $wpdb->prefix . 'datamachine_bridge_messages';
 		$auth_codes_table = $wpdb->prefix . 'datamachine_bridge_auth_codes';
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';

@@ -51,7 +51,7 @@ class BridgeConnections {
 		// Update existing registration for this agent+token+bridge_id combo.
 		foreach ( $registrations as $key => $reg ) {
 			if ( (int) $reg['agent_id'] === $agent_id && (int) ( $reg['token_id'] ?? 0 ) === (int) $token_id && $reg['bridge_id'] === $bridge_id ) {
-				$registration_id            = $reg['registration_id'];
+				$registration_id                       = $reg['registration_id'];
 				$registrations[ $key ]['callback_url'] = $callback_url;
 				$registrations[ $key ]['token_id']     = $token_id;
 				$registrations[ $key ]['last_seen']    = current_time( 'mysql', true );
@@ -192,7 +192,7 @@ class BridgeConnections {
 			$params       = array_merge( $params, $session_ids );
 		}
 
-		$query  .= ' ORDER BY created_at ASC LIMIT %d';
+		$query   .= ' ORDER BY created_at ASC LIMIT %d';
 		$params[] = $limit;
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
@@ -207,7 +207,7 @@ class BridgeConnections {
 		}
 
 		return array_map( function ( $row ) {
-			$message       = json_decode( $row['content'], true ) ?? array();
+			$message               = json_decode( $row['content'], true ) ?? array();
 			$message['queue_id']   = $row['queue_id'];
 			$message['created_at'] = $row['created_at'];
 			return $message;
@@ -227,16 +227,18 @@ class BridgeConnections {
 			return 0;
 		}
 
-		$table_name = $wpdb->prefix . 'datamachine_bridge_messages';
+		$table_name   = $wpdb->prefix . 'datamachine_bridge_messages';
 		$placeholders = implode( ',', array_fill( 0, count( $queue_ids ), '%s' ) );
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+		// phpcs:disable WordPress.DB.PreparedSQLPlaceholders, WordPress.DB.PreparedSQL -- Table name from $wpdb->prefix, not user input.
 		$updated = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND status = 'pending'",
 				array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids )
 			)
 		);
+		// phpcs:enable WordPress.DB.PreparedSQLPlaceholders, WordPress.DB.PreparedSQL
 		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
 
 		return (int) $updated;
@@ -260,10 +262,10 @@ class BridgeConnections {
 			return 0;
 		}
 
-		$table_name    = $wpdb->prefix . 'datamachine_bridge_messages';
-		$placeholders  = implode( ',', array_fill( 0, count( $queue_ids ), '%s' ) );
-		$query         = "UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND agent_id = %d";
-		$params        = array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids, array( $agent_id ) );
+		$table_name   = $wpdb->prefix . 'datamachine_bridge_messages';
+		$placeholders = implode( ',', array_fill( 0, count( $queue_ids ), '%s' ) );
+		$query        = "UPDATE %i SET status = 'delivered', delivered_at = %s WHERE queue_id IN ({$placeholders}) AND agent_id = %d";
+		$params       = array_merge( array( $table_name, current_time( 'mysql', true ) ), $queue_ids, array( $agent_id ) );
 
 		if ( null !== $token_id ) {
 			$query   .= ' AND token_id = %d';

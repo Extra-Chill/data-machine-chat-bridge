@@ -156,6 +156,7 @@ class AuthCodes {
 	 */
 	private function compute_pkce_challenge( string $verifier ): string {
 		$hash = hash( 'sha256', $verifier, true );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions -- Required for API authentication, not obfuscation.
 		return rtrim( strtr( base64_encode( $hash ), '+/', '-_' ), '=' );
 	}
 }

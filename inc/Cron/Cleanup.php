@@ -56,18 +56,18 @@ class Cleanup {
 		$auth_codes  = new AuthCodes();
 		$connections = new BridgeConnections();
 
-		$codes_deleted     = $auth_codes->cleanup_expired();
-		$messages_deleted  = $connections->cleanup_delivered_messages( 7 );
-		$regs_removed      = $connections->cleanup_stale_registrations();
+		$codes_deleted    = $auth_codes->cleanup_expired();
+		$messages_deleted = $connections->cleanup_delivered_messages( 7 );
+		$regs_removed     = $connections->cleanup_stale_registrations();
 
 		do_action(
 			'datamachine_log',
 			'info',
 			'Chat bridge daily cleanup completed',
 			array(
-				'expired_auth_codes'    => $codes_deleted,
-				'delivered_messages'    => $messages_deleted,
-				'stale_registrations'   => $regs_removed,
+				'expired_auth_codes'  => $codes_deleted,
+				'delivered_messages'  => $messages_deleted,
+				'stale_registrations' => $regs_removed,
 			)
 		);
 	}

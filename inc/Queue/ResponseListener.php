@@ -58,14 +58,14 @@ class ResponseListener {
 
 		// Build the outbound message payload.
 		$message = array(
-			'session_id'  => $session_id,
-			'agent_id'    => $agent_id,
-			'user_id'     => $user_id,
-			'role'        => 'assistant',
-			'content'     => $response_data['response'] ?? $response_data['final_content'] ?? '',
-			'completed'   => $response_data['completed'] ?? true,
-			'timestamp'   => gmdate( 'c' ),
-			'metadata'    => array(
+			'session_id' => $session_id,
+			'agent_id'   => $agent_id,
+			'user_id'    => $user_id,
+			'role'       => 'assistant',
+			'content'    => $response_data['response'] ?? $response_data['final_content'] ?? '',
+			'completed'  => $response_data['completed'] ?? true,
+			'timestamp'  => gmdate( 'c' ),
+			'metadata'   => array(
 				'turn_number' => $response_data['turn_number'] ?? null,
 				'max_turns'   => $response_data['max_turns'] ?? null,
 			),

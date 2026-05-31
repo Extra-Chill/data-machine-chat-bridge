@@ -94,15 +94,15 @@ class BridgeEndpoints {
 				'callback'            => array( self::class, 'handle_pending' ),
 				'permission_callback' => $token_auth,
 				'args'                => array(
-					'limit' => array(
+					'limit'       => array(
 						'type'              => 'integer',
 						'required'          => false,
 						'default'           => 50,
 						'sanitize_callback' => 'absint',
 					),
 					'session_ids' => array(
-						'required'          => false,
-						'description'       => 'Optional array or comma-separated list of session IDs to scope polling.',
+						'required'    => false,
+						'description' => 'Optional array or comma-separated list of session IDs to scope polling.',
 					),
 				),
 			)
@@ -140,19 +140,19 @@ class BridgeEndpoints {
 				'callback'            => array( self::class, 'handle_send' ),
 				'permission_callback' => $token_auth,
 				'args'                => array(
-					'message'    => array(
+					'message'          => array(
 						'type'              => 'string',
 						'required'          => true,
 						'description'       => 'The user message text.',
 						'sanitize_callback' => 'sanitize_textarea_field',
 					),
-					'session_id' => array(
+					'session_id'       => array(
 						'type'              => 'string',
 						'required'          => false,
 						'description'       => 'Existing session ID to continue. Omit to create or reuse a session.',
 						'sanitize_callback' => 'sanitize_text_field',
 					),
-					'attachments' => array(
+					'attachments'      => array(
 						'type'              => 'array',
 						'required'          => false,
 						'description'       => 'Media attachments for multi-modal messages. Each item: {url, media_id, mime_type, filename}. Mirrors the /datamachine/v1/chat schema.',
@@ -167,13 +167,13 @@ class BridgeEndpoints {
 						),
 						'sanitize_callback' => array( self::class, 'sanitize_attachments' ),
 					),
-					'bridge_app' => array(
+					'bridge_app'       => array(
 						'type'              => 'string',
 						'required'          => false,
 						'description'       => 'Slug of the upstream chat app (e.g. beeper, matrix, imessage, whatsapp, signal, telegram, discord). Propagated into client_context so mode guidance can adapt to the environment.',
 						'sanitize_callback' => 'sanitize_key',
 					),
-					'bridge_room'   => array(
+					'bridge_room'      => array(
 						'type'              => 'string',
 						'required'          => false,
 						'description'       => 'Upstream room/conversation identifier (opaque to DM; used only for mode guidance hints).',
@@ -283,7 +283,7 @@ class BridgeEndpoints {
 	public static function handle_pending( WP_REST_Request $request ): \WP_REST_Response {
 		$agent_id    = PermissionHelper::get_acting_agent_id();
 		$token_id    = PermissionHelper::get_acting_token_id();
-		$limit       = $request->get_param( 'limit' ) ?: 50;
+		$limit       = $request->get_param( 'limit' ) ? $request->get_param( 'limit' ) : 50;
 		$session_ids = self::normalize_string_list( $request->get_param( 'session_ids' ) );
 
 		$connections = new BridgeConnections();
@@ -329,6 +329,7 @@ class BridgeEndpoints {
 	 * Handle GET /identity — return agent info for the authenticated token.
 	 */
 	public static function handle_identity( WP_REST_Request $request ): \WP_REST_Response|WP_Error {
+		unset( $request );
 		$agent_id = PermissionHelper::get_acting_agent_id();
 
 		if ( ! $agent_id ) {
@@ -476,20 +477,20 @@ class BridgeEndpoints {
 		// Base onboarding config — intentionally minimal.
 		// Platform plugins add product-specific values via the filter.
 		$config = array(
-			'site_url'        => get_site_url(),
-			'site_name'       => get_bloginfo( 'name' ),
-			'site_host'       => $site_host,
-			'authorize_url'   => $authorize_url,
-			'agent'           => ! empty( $agent_data ) ? $agent_data : null,
-			'display_name'    => $agent ? $agent['agent_name'] : get_bloginfo( 'name' ),
-			'description'     => '',
-			'avatar_url'      => '',
-			'welcome_message' => '',
-			'login_label'     => 'Sign in',
+			'site_url'           => get_site_url(),
+			'site_name'          => get_bloginfo( 'name' ),
+			'site_host'          => $site_host,
+			'authorize_url'      => $authorize_url,
+			'agent'              => ! empty( $agent_data ) ? $agent_data : null,
+			'display_name'       => $agent ? $agent['agent_name'] : get_bloginfo( 'name' ),
+			'description'        => '',
+			'avatar_url'         => '',
+			'welcome_message'    => '',
+			'login_label'        => 'Sign in',
 			'login_instructions' => '',
-			'capabilities'    => array(),
-			'room_name'       => '',
-			'room_topic'      => '',
+			'capabilities'       => array(),
+			'room_name'          => '',
+			'room_topic'         => '',
 		);
 
 		/**
